@@ -19,6 +19,12 @@ jobs:
       - name: Run Go Tests
         run: go test -v ./
 
+      - name: Run Go Server Test
+        run: go test -v ./cmd/... -args --hostname="http://0.0.0.0:8080"
+
+      - name: Run Go Vet
+        run: go vet -v ./
+
       - name: Build wrlookup
         run: go build -v -o wrlookup ./cmd/wrlookup/main.go
 
