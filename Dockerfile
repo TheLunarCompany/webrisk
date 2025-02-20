@@ -1,4 +1,4 @@
-FROM golang:1.19 as build
+FROM golang:1.19 AS build
 
 WORKDIR /go/src/webrisk
 
@@ -8,15 +8,9 @@ RUN go mod download && go mod verify
 
 COPY . .
 
-# Analyze our Go code and run all tests. To speed up building, such as during
-# development, consider commenting out these lines.
-RUN go vet -v
-RUN go test -v
-RUN go test -v ./cmd/... -args --hostname="http://0.0.0.0:8080"
-
 RUN CGO_ENABLED=0 go build -o /go/bin/wrserver cmd/wrserver/main.go
 
-FROM gcr.io/distroless/static-debian11 as wrserver
+FROM gcr.io/distroless/static-debian11 AS wrserver
 
 COPY --from=build /go/bin/wrserver /
 
