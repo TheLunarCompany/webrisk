@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     https://www.apache.org/licenses/LICENSE-2.0
+//	https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -200,15 +200,16 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
-	"github.com/rakyll/statik/fs"
+	"github.com/google/webrisk"
 	_ "github.com/google/webrisk/cmd/wrserver/statik"
 	pb "github.com/google/webrisk/internal/webrisk_proto"
-	"github.com/google/webrisk"
+	"github.com/rakyll/statik/fs"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -223,13 +224,29 @@ const (
 )
 
 var (
-	apiKeyFlag             = flag.String("apikey", os.Getenv("APIKEY"), "specify your Web Risk API key")
-	srvAddrFlag            = flag.String("srvaddr", "0.0.0.0:8080", "TCP network address the HTTP server should use")
-	proxyFlag              = flag.String("proxy", "", "proxy to use to connect to the HTTP server")
-	databaseFlag           = flag.String("db", "", "path to the Web Risk database.")
-	threatTypesFlag        = flag.String("threatTypes", "ALL", "threat types to check against")
-	maxDiffEntriesFlag     = flag.Int("maxDiffEntries", 0, "maximum number of diff entries to return from a ComputeThreatListDiff request")
-	maxDatabaseEntriesFlag = flag.Int("maxDatabaseEntries", 0, "maximum number of database entries to be stored in the local database")
+	apiKeyFlag = flag.String(
+		"apikey",
+		os.Getenv("APIKEY"),
+		"specify your Web Risk API key",
+	)
+	srvAddrFlag = flag.String(
+		"srvaddr",
+		"0.0.0.0:8080",
+		"TCP network address the HTTP server should use",
+	)
+	proxyFlag          = flag.String("proxy", "", "proxy to use to connect to the HTTP server")
+	databaseFlag       = flag.String("db", "", "path to the Web Risk database.")
+	threatTypesFlag    = flag.String("threatTypes", "ALL", "threat types to check against")
+	maxDiffEntriesFlag = flag.Int(
+		"maxDiffEntries",
+		0,
+		"maximum number of diff entries to return from a ComputeThreatListDiff request",
+	)
+	maxDatabaseEntriesFlag = flag.Int(
+		"maxDatabaseEntries",
+		0,
+		"maximum number of database entries to be stored in the local database",
+	)
 )
 
 var threatTemplate = map[webrisk.ThreatType]string{
@@ -362,6 +379,13 @@ func serveLookups(resp http.ResponseWriter, req *http.Request, sb *webrisk.Updat
 	// Lookup the URL.
 	utss, err := sb.LookupURLsContext(req.Context(), urls)
 	if err != nil {
+		// A semi-hack to detect irrelevant requests.
+		// For example, k8s-internal URLs will cause an error, however the request
+		// is fine and should be ignored.
+		// The status code 422 is used to reflect that.
+		if strings.Contains(err.Error(), "invalid") {
+			http.Error(resp, err.Error(), http.StatusUnprocessableEntity)
+		}
 		http.Error(resp, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -389,7 +413,11 @@ func serveLookups(resp http.ResponseWriter, req *http.Request, sb *webrisk.Updat
 	}
 }
 
-func parseTemplates(fs http.FileSystem, t *template.Template, paths ...string) (*template.Template, error) {
+func parseTemplates(
+	fs http.FileSystem,
+	t *template.Template,
+	paths ...string,
+) (*template.Template, error) {
 	for _, path := range paths {
 		file, err := fs.Open(path)
 		if err != nil {
@@ -409,7 +437,12 @@ func parseTemplates(fs http.FileSystem, t *template.Template, paths ...string) (
 
 // serveRedirector implements a basic HTTP redirector that will filter out
 // redirect URLs that are unsafe according to the Web Risk API.
-func serveRedirector(resp http.ResponseWriter, req *http.Request, sb *webrisk.UpdateClient, fs http.FileSystem) {
+func serveRedirector(
+	resp http.ResponseWriter,
+	req *http.Request,
+	sb *webrisk.UpdateClient,
+	fs http.FileSystem,
+) {
 	rawURL := req.URL.Query().Get("url")
 	if rawURL == "" || req.URL.Path != "/r" {
 		http.NotFound(resp, req)
