@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  DOCKER_HUB_SPACE: "lunarapi"
+  GCR_REGISTRY: us-central1-docker.pkg.dev/prj-common-442813/lunar-private
 
 jobs:
   docker:
@@ -14,7 +14,13 @@ jobs:
     strategy:
       matrix:
         app:
-          [{ name: "webrisk-server", context: ".", dockerfile: "./Dockerfile" }]
+          [
+            {
+              name: "webrisk-server",
+              context: ".",
+              dockerfile: "./Dockerfile"
+            }
+          ]
 
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -37,17 +43,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+      - name: Auth to GCP
+        uses: google-github-actions/auth@v2
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Auth to GCR
+        run: |
+          gcloud auth configure-docker $(awk -F '/' {'print $1'} <<< ${{ env.GCR_REGISTRY }}) --quiet
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ${{ env.DOCKER_HUB_SPACE }}/${{ matrix.app.name }}
+          images: ${{ env.GCR_REGISTRY }}/${{ matrix.app.image_prefix }}${{ matrix.app.name }}
           tags: |
             type=sha,enable=true,priority=100,prefix=,suffix=,format=short
 
